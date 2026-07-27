@@ -30,8 +30,8 @@ class UserBase(BaseModel):
     @classmethod
     def phone_valid(cls, v: str) -> str:
         v = v.strip()
-        if not re.match(r"^\+?[0-9]{7,15}$", v):
-            raise ValueError("Invalid phone number format")
+        if not re.match(r"^(05|06|07)[0-9]{8}$", v):
+            raise ValueError("Phone number must be exactly 10 digits and start with 05, 06, or 07")
         return v
 
     @field_validator("role")
@@ -48,12 +48,8 @@ class UserCreate(UserBase):
     @field_validator("password")
     @classmethod
     def password_strong(cls, v: str) -> str:
-        if len(v) < 8:
-            raise ValueError("Password must be at least 8 characters")
-        if not re.search(r"[A-Z]", v):
-            raise ValueError("Password must contain at least one uppercase letter")
-        if not re.search(r"[0-9]", v):
-            raise ValueError("Password must contain at least one digit")
+        if len(v) < 6:
+            raise ValueError("Password must be at least 6 characters")
         return v
 
 
@@ -69,12 +65,8 @@ class UserUpdate(BaseModel):
     def password_strong(cls, v: Optional[str]) -> Optional[str]:
         if v is None:
             return v
-        if len(v) < 8:
-            raise ValueError("Password must be at least 8 characters")
-        if not re.search(r"[A-Z]", v):
-            raise ValueError("Password must contain at least one uppercase letter")
-        if not re.search(r"[0-9]", v):
-            raise ValueError("Password must contain at least one digit")
+        if len(v) < 6:
+            raise ValueError("Password must be at least 6 characters")
         return v
 
 
