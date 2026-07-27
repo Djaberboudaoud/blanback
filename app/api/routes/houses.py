@@ -1,11 +1,12 @@
 import os
-import shutil
 import uuid
+import requests
 
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Query
 from sqlalchemy.orm import Session
 from typing import List
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.schema.houses import HouseCreate, HouseUpdate, HouseResponse, HouseImageResponse
 from app.crud import houses as houses_crud
@@ -13,9 +14,27 @@ from app.api.depandance import get_current_user
 
 router = APIRouter()
 
-# Folder where uploaded images are stored (created at startup by main.py)
-is_vercel = os.environ.get("VERCEL") == "1"
-PHOTOS_DIR = "/tmp/photos" if is_vercel else "photos"
+# Supabase Storage Bucket name
+SUPABASE_BUCKET = "photos"
+
+def delete_supabase_file(image_path: str):
+    """Helper to delete a file from Supabase Storage"""
+    if not image_path.startswith("http"):
+        return
+    
+    # Extract filename from URL (e.g. https://.../storage/v1/object/public/photos/abc.jpg)
+    filename = image_path.split("/")[-1]
+    
+    url = f"{settings.SUPABASE_URL}/storage/v1/object/{SUPABASE_BUCKET}/{filename}"
+    headers = {
+        "Authorization": f"Bearer {settings.SUPABASE_KEY}",
+        "apikey": settings.SUPABASE_KEY,
+    }
+    try:
+        requests.delete(url, headers=headers)
+    except Exception as e:
+        print("Failed to delete from Supabase:", e)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # HOUSE CRUD
@@ -99,13 +118,10 @@ def update_house(
     if not updated:
         raise HTTPException(status_code=404, detail="House not found")
 
-    # After marking as Sold, delete image files from disk and their DB records
+    # After marking as Sold, delete image files from Supabase and their DB records
     if is_selling:
         for path in image_paths:
-            try:
-                os.remove(path)
-            except OSError:
-                pass
+            delete_supabase_file(path)
         # Remove from DB
         from app.models.houses import HouseImage
         db.query(HouseImage).filter(HouseImage.house_id == house_id).delete(synchronize_session=False)
@@ -134,12 +150,9 @@ def delete_house(
     if not deleted:
         raise HTTPException(status_code=404, detail="House not found")
 
-    # Remove physical files from disk
+    # Remove physical files from Supabase
     for path in image_paths:
-        try:
-            os.remove(path)
-        except OSError:
-            pass
+        delete_supabase_file(path)
 
 
 
@@ -176,10 +189,7 @@ def reject_house(
         raise HTTPException(status_code=404, detail="House not found")
     # Remove physical files
     for path in image_paths:
-        try:
-            os.remove(path)
-        except OSError:
-            pass
+        delete_supabase_file(path)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # IMAGE UPLOAD / DELETE
@@ -217,19 +227,34 @@ def upload_image(
             detail=f"File type '{file.content_type}' not allowed. Use jpeg, png, webp or gif.",
         )
 
-    # Build a unique filename and save to disk
+    # Upload to Supabase Storage
     ext       = os.path.splitext(file.filename or "image.jpg")[1]
     filename  = f"{uuid.uuid4().hex}{ext}"
-    save_path = os.path.join(PHOTOS_DIR, filename)
-
-    with open(save_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    
+    url = f"{settings.SUPABASE_URL}/storage/v1/object/{SUPABASE_BUCKET}/{filename}"
+    headers = {
+        "Authorization": f"Bearer {settings.SUPABASE_KEY}",
+        "apikey": settings.SUPABASE_KEY,
+        "Content-Type": file.content_type,
+    }
+    
+    # Read file content
+    file_bytes = file.file.read()
+    
+    try:
+        response = requests.post(url, headers=headers, data=file_bytes)
+        response.raise_for_status()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to upload to Supabase: {str(e)}")
+        
+    # The public URL for the uploaded image
+    public_url = f"{settings.SUPABASE_URL}/storage/v1/object/public/{SUPABASE_BUCKET}/{filename}"
 
     # Store the relative path in the database
     db_image = houses_crud.add_image(
         db,
         house_id=house_id,
-        image_path=save_path,
+        image_path=public_url,
         is_cover=is_cover,
     )
     return db_image
@@ -266,8 +291,5 @@ def delete_image(
     deleted = houses_crud.delete_image(db, image_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Image not found")
-    # Also remove the file from disk (ignore errors if file already gone)
-    try:
-        os.remove(deleted.image_path)
-    except OSError:
-        pass
+    # Also remove the file from Supabase
+    delete_supabase_file(deleted.image_path)

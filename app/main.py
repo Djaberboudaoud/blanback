@@ -7,11 +7,6 @@ from app.core.config import settings
 from app.core.database import engine, Base
 from app.api.routes import users, houses
 
-# ── Make sure the photos folder exists ────────────────────────────────────────
-is_vercel = os.environ.get("VERCEL") == "1"
-PHOTOS_DIR = "/tmp/photos" if is_vercel else "photos"
-os.makedirs(PHOTOS_DIR, exist_ok=True)
-
 # ── Create all DB tables (if they do not exist yet) ───────────────────────────
 Base.metadata.create_all(bind=engine)
 
@@ -30,10 +25,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# ── Serve uploaded images as static files  ─────────────────────────────────────
-# Example: GET /photos/abc123.jpg  →  returns the file from the photos/ folder
-app.mount("/photos", StaticFiles(directory=PHOTOS_DIR), name="photos")
 
 # ── Routers ────────────────────────────────────────────────────────────────────
 # Admin CRUD endpoints  →  /admins/...
