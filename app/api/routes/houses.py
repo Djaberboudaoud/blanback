@@ -241,11 +241,12 @@ def upload_image(
     # Read file content
     file_bytes = file.file.read()
     
-    try:
-        response = requests.post(url, headers=headers, data=file_bytes)
-        response.raise_for_status()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to upload to Supabase: {str(e)}")
+    response = requests.post(url, headers=headers, data=file_bytes)
+    if response.status_code not in (200, 201):
+        raise HTTPException(
+            status_code=500,
+            detail=f"Supabase upload failed [{response.status_code}]: {response.text}"
+        )
         
     # The public URL for the uploaded image
     public_url = f"{settings.SUPABASE_URL}/storage/v1/object/public/{SUPABASE_BUCKET}/{filename}"
