@@ -8,7 +8,8 @@ from app.core.database import engine, Base
 from app.api.routes import users, houses
 
 # ── Make sure the photos folder exists ────────────────────────────────────────
-PHOTOS_DIR = "photos"
+is_vercel = os.environ.get("VERCEL") == "1"
+PHOTOS_DIR = "/tmp/photos" if is_vercel else "photos"
 os.makedirs(PHOTOS_DIR, exist_ok=True)
 
 # ── Create all DB tables (if they do not exist yet) ───────────────────────────

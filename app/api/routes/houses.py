@@ -14,8 +14,8 @@ from app.api.depandance import get_current_user
 router = APIRouter()
 
 # Folder where uploaded images are stored (created at startup by main.py)
-PHOTOS_DIR = "photos"
-
+is_vercel = os.environ.get("VERCEL") == "1"
+PHOTOS_DIR = "/tmp/photos" if is_vercel else "photos"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # HOUSE CRUD
